@@ -1,6 +1,8 @@
 # Bharatiya-Antariksh-Hackathon-
 This is my project, I made it during the Bharatiya Antariksh Hackathon organized by ISRO in collaboration with Hack2skill... 
-Consider giving a star!
+## Consider giving a star!
+## Keep this in mind!
+Download an original dataset of HEL1OS and SoLEXS from the ISSDC Portal! Like this, extract the data! <img width="793" height="190" alt="image" src="https://github.com/user-attachments/assets/aeb5cb67-41b4-45de-9864-5b8a70ab3b07" />  As in, extract the '.gti' and '.lc' files from the SDD2 sub-folder of SoLEXS and 'lightcurve_czt1.fits' file from the czt sub-folder of the HEL1OS! 
 
 [![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-SSE-green.svg)](https://flask.palletsprojects.com/)
