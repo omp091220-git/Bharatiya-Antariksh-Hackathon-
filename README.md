@@ -47,18 +47,7 @@ Our complete Zero-Trust architecture runs flawlessly on baseline CPU compute ins
 Human reaction time is a fatal bottleneck during severe X-class flares. To achieve true hardware survivability, our engine continuously calculates a dynamic ambient radiation baseline using a 300-point rolling median of SoLEXS telemetry. This prevents "alert fatigue" during high-radiation periods. 
 
 If the multi-parameter threat probability exceeds the **85% dynamic threshold**, the backend completely bypasses human operators. It autonomously fires a webhook simulating an FPGA-level payload safing command (ARM interrupt). This initiates the physical closure of payload apertures and forces the spacecraft into a low-power safe mode *before* the extreme radiation arrives.
-
-## 🚀 Installation & Setup
-
-### Installation/Prerequisites
-* Python 3.9+
-* Standard web browser (Chrome, Edge, Firefox)
-
-1. **Clone the repository**
-```bash
-git clone [https://github.com/your-username/sukshmadarshi-aditya-l1.git](https://github.com/your-username/sukshmadarshi-aditya-l1.git)
-cd sukshmadarshi-aditya-l1
-```
+  
 
 
 
