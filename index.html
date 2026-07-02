@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Aditya-L1 // Master Control Station</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background-color: #050505; color: #00ffff; font-family: monospace; }
+        .grid-panel { background-color: #0a0a0a; border: 1px solid #004444; padding: 1rem; border-radius: 6px; box-shadow: inset 0 0 10px #000; }
+        .alert-safe { color: #00ff00; }
+        .alert-warn { color: #ffaa00; text-shadow: 0 0 10px #ffaa00; }
+        .alert-crit { color: #ff0000; text-shadow: 0 0 20px #ff0000; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+    </style>
+    <style>
+        @keyframes cmeTransit {
+            0% { left: 2%; opacity: 0; transform: scaleX(0.2); }
+            10% { opacity: 1; transform: scaleX(1); }
+            90% { opacity: 1; transform: scaleX(1); }
+            100% { left: 93%; opacity: 0; transform: scaleX(0.2); }
+        }
+    </style>
+</head>
+<body class="p-4 h-screen flex flex-col">
+
+    <div id="safingModal" class="hidden absolute inset-0 bg-red-950 bg-opacity-95 z-50 flex flex-col justify-center items-center text-center border-8 border-red-600">
+        <h1 class="text-6xl font-black text-white animate-pulse mb-6 tracking-widest">⚠ CRITICAL X-CLASS ANOMALY</h1>
+        <div class="bg-black text-green-500 font-mono text-left p-6 rounded-lg w-2/3 h-80 overflow-hidden border border-gray-700 shadow-[0_0_30px_#ff0000]">
+            <p id="terminalOutput" class="whitespace-pre-line text-lg"></p>
+        </div>
+    </div>
+
+    <div class="flex justify-between items-center mb-4 border-b border-cyan-900 pb-2">
+        <h1 class="text-2xl font-bold tracking-widest">सौरज्वालानिरीक्षणभूमिकेन्द्रम् (by सूक्ष्मदर्शी)</h1>
+        <div>
+            <button id="streamBtn" class="bg-cyan-800 hover:bg-cyan-600 text-white px-6 py-2 rounded font-bold transition-all" onclick="startStream()">
+                INITIATE TELEMETRY
+            </button>
+            <button class="bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-600 px-4 py-2 rounded font-bold transition-all ml-3" onclick="exportData()">
+                EXPORT CSV
+            </button>
+        </div>
+    </div>
+
+    <div class="mb-4 flex items-center space-x-4 bg-gray-900 p-3 rounded border border-gray-700 shadow-[inset_0_0_10px_#000]">
+        <div id="liveIndicator" class="text-green-500 font-bold tracking-widest animate-pulse w-32 text-center text-sm border-r border-gray-700 pr-2">LIVE STREAM</div>
+        
+        <button id="playPauseBtn" class="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-1 rounded text-xs font-bold transition-all w-24" onclick="togglePlayPause()">
+            PAUSE
+        </button>
+
+        <input type="range" id="timeScrubber" class="flex-grow cursor-pointer" min="0" max="0" value="0" step="1" title="Scrub Historical Telemetry">
+        <button id="resumeLiveBtn" class="hidden bg-cyan-700 hover:bg-cyan-500 text-white px-4 py-1 rounded text-xs font-bold transition-all" onclick="resumeLive()">
+            SYNC TO LIVE
+        </button>
+    </div>
+
+    <div class="grid grid-cols-3 gap-4 flex-grow h-[85vh]">
+        
+        <div class="col-span-2 grid grid-rows-3 gap-4">
+            <div class="grid-panel relative h-full"><canvas id="sxrChart"></canvas></div>
+            <div class="grid-panel relative h-full"><canvas id="hxrChart"></canvas></div>
+            <div class="grid-panel relative h-full"><canvas id="hrChart"></canvas></div>
+        </div>
+
+        <div class="col-span-1 grid grid-rows-2 gap-4">
+            
+            <div class="grid-panel relative h-full">
+                <h2 class="text-xs text-gray-500 absolute top-2 left-2 z-10 uppercase">Neupert Phase-Space (d[SXR]/dt vs HXR)</h2>
+                <canvas id="phaseChart"></canvas>
+            </div>
+
+            <div class="grid-panel flex flex-col justify-center items-center text-center border-red-900 relative">
+                <h2 class="text-gray-500 mb-2 uppercase">Actionable Intelligence</h2>
+                <div id="statusText" class="text-5xl font-black alert-safe mb-2">SAFE</div>
+                <div class="text-lg text-gray-300">Probability: <span id="probText" class="font-bold text-white">0.0%</span></div>
+                
+                <div class="mt-4 w-full text-sm border-t border-gray-800 pt-4 text-left px-4">
+                    <div class="text-gray-400 mb-1">Earth Impact Scale: <br><span id="rScale" class="text-green-500 font-bold text-base">R0 (None)</span></div>
+                    <div class="text-gray-400 mt-3">XAI Dominant Signal: <br><span id="xaiSignal" class="text-cyan-400 font-bold text-base">Background Noise</span></div>
+                </div>
+
+                <div class="w-full border-t border-gray-800 pt-3 mt-3 px-4 text-left pb-4">
+                    <div class="text-[10px] text-gray-500 font-bold tracking-wider uppercase">CME Shockwave Kinematics</div>
+                    <div class="flex justify-between items-center mt-1">
+                        <div>
+                            <span class="text-xs text-gray-400">Ejection Velocity:</span><br>
+                            <span id="cmeSpeedDisplay" class="font-bold text-sm text-cyan-400">400.0 km/s</span>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xs text-gray-400">Earth Impact ETA:</span><br>
+                            <span id="cmeEtaDisplay" class="font-bold text-sm text-green-400">NO ACTIVE THREAT</span>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-3 w-full bg-black rounded-full h-1.5 relative flex items-center border border-gray-800">
+                        <div class="absolute left-0 w-3 h-3 bg-yellow-500 rounded-full shadow-[0_0_8px_#eab308] z-10"></div>
+                        <div id="cmeWave" class="absolute w-8 h-1.5 rounded-full" style="display: none;"></div>
+                        <div class="absolute right-0 w-2.5 h-2.5 bg-blue-500 rounded-full shadow-[0_0_8px_#3b82f6] z-10"></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. STATE & MEMORY ARCHIVE (MUST BE FIRST)
+        // ==========================================
+        const dataHistory = { time: [], sxr: [], hxr: [], hr: [], phase: [], threatInfo: [] };
+        const WINDOW_SIZE = 100;
+        
+        let isLive = true;
+        let isPlaying = true; 
+        let playheadIndex = -1; 
+        let safingTriggered = false;
+
+        const scrubber = document.getElementById('timeScrubber');
+        const liveIndicator = document.getElementById('liveIndicator');
+        const resumeBtn = document.getElementById('resumeLiveBtn');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+
+        // ==========================================
+        // 2. PLUGINS & CLICK HANDLERS
+        // ==========================================
+        function handleChartClick(event, elements, chart) {
+            if (elements.length === 0) return; 
+            const localIndex = elements[0].index;
+            const currentEndIndex = parseInt(scrubber.value);
+            const startIndex = Math.max(0, currentEndIndex - WINDOW_SIZE);
+            
+            playheadIndex = startIndex + localIndex;
+            isLive = false;
+            isPlaying = false;
+            
+            playPauseBtn.innerText = "UNPAUSE";
+            playPauseBtn.className = "bg-green-600 hover:bg-green-500 text-white px-4 py-1 rounded text-xs font-bold transition-all w-24 shadow-[0_0_10px_#00ff00]";
+            liveIndicator.innerText = "INSPECTING";
+            liveIndicator.className = "text-purple-500 font-bold tracking-widest w-32 text-center text-sm border-r border-gray-700 pr-2 animate-pulse";
+            resumeBtn.classList.remove('hidden');
+
+            updateThreatMatrixUI(playheadIndex);
+            charts.sxr.update('none');
+            charts.hxr.update('none');
+            charts.hr.update('none');
+            phaseChart.update('none');
+        }
+
+        const anomalyLockPlugin = {
+            id: 'anomalyLock',
+            afterDraw(chart) {
+                if (!dataHistory || dataHistory.threatInfo.length === 0 || playheadIndex === -1) return;
+                
+                const currentEndIndex = parseInt(scrubber.value);
+                const startIndex = Math.max(0, currentEndIndex - WINDOW_SIZE);
+                
+                if (playheadIndex >= startIndex && playheadIndex <= currentEndIndex) {
+                    const localIndex = playheadIndex - startIndex;
+                    const meta = chart.getDatasetMeta(0);
+                    const targetPoint = meta.data[localIndex];
+                    
+                    if (!targetPoint) return;
+
+                    const frameData = dataHistory.threatInfo[playheadIndex];
+                    const ctx = chart.ctx;
+                    ctx.save();
+                    
+                    if (chart.config.type === 'line') {
+                        ctx.beginPath();
+                        ctx.moveTo(targetPoint.x, chart.chartArea.top);
+                        ctx.lineTo(targetPoint.x, chart.chartArea.bottom);
+                        
+                        if (frameData.prob > 0.85) { ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)'; }
+                        else if (frameData.prob > 0.50) { ctx.strokeStyle = 'rgba(255, 170, 0, 0.8)'; }
+                        else { ctx.strokeStyle = 'rgba(0, 255, 255, 0.4)'; }
+                        
+                        ctx.lineWidth = 2;
+                        ctx.setLineDash([5, 5]);
+                        ctx.stroke();
+                    }
+
+                    if (frameData.prob > 0.50) {
+                        ctx.beginPath();
+                        ctx.arc(targetPoint.x, targetPoint.y, 25, 0, 2 * Math.PI);
+                        ctx.strokeStyle = (frameData.prob > 0.85) ? '#ff0000' : '#ffaa00';
+                        ctx.lineWidth = 2;
+                        ctx.setLineDash([5, 5]);
+                        ctx.stroke();
+                        
+                        ctx.beginPath();
+                        ctx.arc(targetPoint.x, targetPoint.y, 40, 0, 2 * Math.PI);
+                        ctx.fillStyle = (frameData.prob > 0.85) ? 'rgba(255, 0, 0, 0.1)' : 'rgba(255, 170, 0, 0.1)';
+                        ctx.fill();
+                        ctx.setLineDash([]);
+                        ctx.stroke();
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(targetPoint.x - 50, targetPoint.y);
+                        ctx.lineTo(targetPoint.x + 50, targetPoint.y);
+                        ctx.moveTo(targetPoint.x, targetPoint.y - 50);
+                        ctx.lineTo(targetPoint.x, targetPoint.y + 50);
+                        ctx.strokeStyle = (frameData.prob > 0.85) ? 'rgba(255, 0, 0, 0.6)' : 'rgba(255, 170, 0, 0.6)';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                        
+                        ctx.fillStyle = (frameData.prob > 0.85) ? '#ff0000' : '#ffaa00';
+                        ctx.font = 'bold 11px monospace';
+                        ctx.fillText('ANOMALY LOCK', targetPoint.x - 35, targetPoint.y - 50);
+                    }
+                    ctx.restore();
+                }
+            }
+        };
+
+        // ==========================================
+        // 3. CHART INITIALIZATION
+        // ==========================================
+        const initLineChart = (id, label, color, yAxisLabel) => new Chart(document.getElementById(id), {
+            type: 'line',
+            data: { labels: [], datasets: [{ label, data: [], borderColor: color, borderWidth: 1.5, pointRadius: 0, hoverRadius: 6, tension: 0.2 }] },
+            plugins: [anomalyLockPlugin], 
+            options: { 
+                responsive: true, maintainAspectRatio: false, animation: false, 
+                interaction: { mode: 'index', intersect: false }, onClick: handleChartClick, 
+                plugins: {
+                    tooltip: {
+                        enabled: true, backgroundColor: 'rgba(5, 5, 5, 0.9)', titleColor: color, borderColor: color, borderWidth: 1, bodyFont: { family: 'monospace', size: 14 }, padding: 10,
+                        callbacks: { label: function(context) { return `Value: ${context.parsed.y.toFixed(4)}`; } }
+                    }
+                },
+                scales: { 
+                    x: { display: true, title: { display: true, text: 'Mission Elapsed Time', color: '#555', font: { family: 'monospace', size: 10 } }, ticks: { color: '#333', maxTicksLimit: 8 } },
+                    y: { display: true, title: { display: true, text: yAxisLabel, color: color, font: { family: 'monospace', size: 11 } }, ticks: { color: '#555' } }
+                } 
+            }
+        });
+
+        const charts = {
+            sxr: initLineChart('sxrChart', 'SoLEXS (Soft X-Ray) - Thermal Plasma', '#00ffff', 'Counts (1 - 22 keV)'),
+            hxr: initLineChart('hxrChart', 'HEL1OS (Hard X-Ray) - Impulsive Spikes', '#ff8800', 'Counts (20 - 150 keV)'),
+            hr: initLineChart('hrChart', 'Hardness Ratio & QPP Fusion Indicator', '#ff00ff', 'Ratio (HXR / SXR)')
+        };
+
+        const phaseChart = new Chart(document.getElementById('phaseChart'), {
+            type: 'scatter',
+            data: { datasets: [{ label: 'Neupert Loop', data: [], backgroundColor: '#00ffcc', pointRadius: 3, hoverRadius: 8 }] },
+            plugins: [anomalyLockPlugin], 
+            options: { 
+                responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: 'nearest', intersect: true }, onClick: handleChartClick, 
+                plugins: {
+                    tooltip: {
+                        enabled: true, backgroundColor: 'rgba(5, 5, 5, 0.9)', borderColor: '#00ffcc', borderWidth: 1, bodyFont: { family: 'monospace', size: 13 },
+                        callbacks: { label: function(context) { return `HXR: ${context.parsed.x.toFixed(2)} | d[SXR]/dt: ${context.parsed.y.toFixed(2)}`; } }
+                    }
+                },
+                scales: { x: { title: { display: true, text: 'HEL1OS (HXR)', color: '#666' }}, y: { title: { display: true, text: 'd[SoLEXS]/dt', color: '#666' }} } 
+            }
+        });
+
+        // ==========================================
+        // 4. UI & DVR CONTROLLERS
+        // ==========================================
+        function updateThreatMatrixUI(index) {
+            if (!dataHistory || !dataHistory.threatInfo[index]) return;
+            const frameData = dataHistory.threatInfo[index];
+            
+            document.getElementById('probText').innerText = (frameData.prob * 100).toFixed(1) + "%";
+            const status = document.getElementById('statusText');
+            status.innerText = frameData.f_class;
+            status.className = `text-5xl font-black ${frameData.prob > 0.85 ? 'alert-crit' : (frameData.prob > 0.50 ? 'alert-warn' : 'alert-safe')} mb-2`;
+
+            let rScaleText = "R0 (None)", rColor = "text-green-500";
+            if (frameData.f_class === "X-CLASS") { rScaleText = "R3+ (Strong/Extreme)"; rColor = "text-red-500"; }
+            else if (frameData.f_class === "M-CLASS") { rScaleText = "R1-R2 (Minor/Moderate)"; rColor = "text-yellow-500"; }
+            
+            const rScaleEl = document.getElementById('rScale');
+            rScaleEl.innerText = rScaleText;
+            rScaleEl.className = `font-bold text-base ${rColor}`;
+
+            let dominant = "Background Noise";
+            if (frameData.prob > 0.05) {
+                if (frameData.xai_neupert >= frameData.xai_hr && frameData.xai_neupert >= frameData.xai_qpp) { dominant = "Neupert Integral (Thermal Lag)"; }
+                else if (frameData.xai_hr >= frameData.xai_neupert && frameData.xai_hr >= frameData.xai_qpp) { dominant = "Hardness Ratio (Non-Thermal Spike)"; }
+                else { dominant = "QPP Resonance (Magnetic Ringing)"; }
+            }
+            document.getElementById('xaiSignal').innerText = dominant;
+            // Dynamic CME Render Controls
+            // Dynamic CME Render Controls & Auto-Animation
+            const cmeSpeedEl = document.getElementById('cmeSpeedDisplay');
+            const cmeEtaEl = document.getElementById('cmeEtaDisplay');
+            const cmeWave = document.getElementById('cmeWave');
+            
+            if (cmeSpeedEl && cmeEtaEl && cmeWave) {
+                cmeSpeedEl.innerText = frameData.cme_speed.toFixed(1) + " km/s";
+                
+                if (frameData.prob > 0.50) {
+                    // Update Text
+                    cmeEtaEl.innerText = "T-MINUS " + frameData.cme_eta.toFixed(1) + " HOURS";
+                    
+                    // Activate Animation
+                    cmeWave.style.display = 'block';
+                    
+                    // MATH: Calculate visual animation speed based on backend plasma speed
+                    // 400 km/s = 3.5 seconds (slow pulse) | 2500 km/s = 0.5 seconds (violent strobe)
+                    let animSeconds = Math.max(0.5, 3.5 - ((frameData.cme_speed - 400) / 2100) * 3.0);
+                    cmeWave.style.animation = `cmeTransit ${animSeconds}s infinite linear`;
+                    
+                    if (frameData.prob > 0.85) {
+                        cmeEtaEl.className = "font-bold text-sm text-red-500 animate-pulse";
+                        cmeSpeedEl.className = "font-bold text-sm text-red-500";
+                        cmeWave.className = "absolute w-10 h-1.5 bg-red-500 rounded-full shadow-[0_0_12px_#ef4444]";
+                    } else {
+                        cmeEtaEl.className = "font-bold text-sm text-yellow-500";
+                        cmeSpeedEl.className = "font-bold text-sm text-yellow-500";
+                        cmeWave.className = "absolute w-8 h-1.5 bg-yellow-500 rounded-full shadow-[0_0_10px_#eab308]";
+                    }
+                } else {
+                    // Turn everything off when the Sun is quiet
+                    cmeEtaEl.innerText = "NO ACTIVE THREAT";
+                    cmeEtaEl.className = "font-bold text-sm text-green-400";
+                    cmeSpeedEl.className = "font-bold text-sm text-cyan-400";
+                    cmeWave.style.animation = 'none';
+                    cmeWave.style.display = 'none';
+                }
+            }
+        }
+
+        function togglePlayPause() {
+            isPlaying = !isPlaying;
+            if (!isPlaying) {
+                isLive = false; 
+                playPauseBtn.innerText = "UNPAUSE";
+                playPauseBtn.className = "bg-green-600 hover:bg-green-500 text-white px-4 py-1 rounded text-xs font-bold transition-all w-24 shadow-[0_0_10px_#00ff00]";
+                liveIndicator.innerText = "PAUSED";
+                liveIndicator.className = "text-yellow-500 font-bold tracking-widest w-32 text-center text-sm border-r border-gray-700 pr-2";
+                resumeBtn.classList.remove('hidden');
+            } else {
+                playPauseBtn.innerText = "PAUSE";
+                playPauseBtn.className = "bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-1 rounded text-xs font-bold transition-all w-24";
+                if (parseInt(scrubber.value) >= parseInt(scrubber.max)) { resumeLive(); } 
+                else {
+                    liveIndicator.innerText = "PLAYING BUFFER";
+                    liveIndicator.className = "text-blue-400 font-bold tracking-widest animate-pulse w-32 text-center text-sm border-r border-gray-700 pr-2";
+                }
+            }
+        }
+
+        scrubber.addEventListener('input', function() {
+            isLive = false; isPlaying = false; 
+            playPauseBtn.innerText = "UNPAUSE";
+            playPauseBtn.className = "bg-green-600 hover:bg-green-500 text-white px-4 py-1 rounded text-xs font-bold transition-all w-24 shadow-[0_0_10px_#00ff00]";
+            liveIndicator.innerText = "SCRUBBING";
+            liveIndicator.className = "text-yellow-500 font-bold tracking-widest w-32 text-center text-sm border-r border-gray-700 pr-2";
+            resumeBtn.classList.remove('hidden');
+            renderHistoricalFrame(parseInt(this.value));
+        });
+
+        function resumeLive() {
+            isLive = true; isPlaying = true;
+            playPauseBtn.innerText = "PAUSE";
+            playPauseBtn.className = "bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-1 rounded text-xs font-bold transition-all w-24";
+            liveIndicator.innerText = "LIVE STREAM";
+            liveIndicator.className = "text-green-500 font-bold tracking-widest animate-pulse w-32 text-center text-sm border-r border-gray-700 pr-2";
+            resumeBtn.classList.add('hidden');
+            scrubber.value = dataHistory.time.length - 1;
+            renderHistoricalFrame(dataHistory.time.length - 1);
+        }
+
+        function renderHistoricalFrame(endIndex) {
+            if (dataHistory.time.length === 0) return;
+            const startIndex = Math.max(0, endIndex - WINDOW_SIZE);
+
+            charts.sxr.data.labels = dataHistory.time.slice(startIndex, endIndex + 1);
+            charts.sxr.data.datasets[0].data = dataHistory.sxr.slice(startIndex, endIndex + 1);
+            charts.sxr.update('none'); 
+
+            charts.hxr.data.labels = dataHistory.time.slice(startIndex, endIndex + 1);
+            charts.hxr.data.datasets[0].data = dataHistory.hxr.slice(startIndex, endIndex + 1);
+            charts.hxr.update('none');
+
+            charts.hr.data.labels = dataHistory.time.slice(startIndex, endIndex + 1);
+            charts.hr.data.datasets[0].data = dataHistory.hr.slice(startIndex, endIndex + 1);
+            charts.hr.update('none');
+
+            phaseChart.data.datasets[0].data = dataHistory.phase.slice(startIndex, endIndex + 1);
+            phaseChart.update('none');
+
+            if (isLive || isPlaying || playheadIndex === -1 || playheadIndex < startIndex || playheadIndex > endIndex) {
+                playheadIndex = endIndex;
+            }
+            updateThreatMatrixUI(playheadIndex);
+        }
+
+        // ==========================================
+        // 5. EXTERNAL HARDWARE & EXPORT LOGIC
+        // ==========================================
+        function triggerHardwareSafing() {
+            if (safingTriggered) return;
+            safingTriggered = true;
+            
+            const modal = document.getElementById('safingModal');
+            const terminal = document.getElementById('terminalOutput');
+            modal.classList.remove('hidden');
+            terminal.innerHTML = "";
+
+            const sequence = [
+                "> [WARN] NEUPERT INTEGRAL THRESHOLD EXCEEDED",
+                "> CALCULATING IMPACT TIME: T-MINUS 14 MINS 22 SECS",
+                "> INITIATING HARDWARE-IN-THE-LOOP SAFING PROTOCOL",
+                "> COMPILING INSTRUCTIONS FOR ONBOARD FPGA ARCHITECTURE...",
+                "> TRANSMITTING HEX PAYLOAD: [0x48 0x41 0x4C 0x54]",
+                "> OVERRIDING ARM PROCESSOR INTERRUPTS...",
+                "> CLOSING SoLEXS & HEL1OS PHYSICAL APERTURES...",
+                "> HIGH-VOLTAGE DETECTOR BIAS RAMPING DOWN...",
+                "> STATUS: PAYLOADS SECURED. AWAITING FLARE PASSAGE."
+            ];
+
+            let i = 0;
+            const typeInterval = setInterval(() => {
+                if (i < sequence.length) { terminal.innerHTML += sequence[i] + "<br><br>"; i++; } 
+                else {
+                    clearInterval(typeInterval);
+                    setTimeout(() => { modal.classList.add('hidden'); safingTriggered = false; }, 6000);
+                }
+            }, 600); 
+        }
+
+        function exportData() {
+            let csvContent = "data:text/csv;charset=utf-8,Mission_Time,SoLEXS_Thermal_Flux,HEL1OS_Impulsive_Spike,Hardness_Ratio\n";
+            for (let i = 0; i < dataHistory.time.length; i++) {
+                csvContent += `${dataHistory.time[i]},${dataHistory.sxr[i]},${dataHistory.hxr[i]},${dataHistory.hr[i]}\n`;
+            }
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "aditya_l1_mission_log.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // ==========================================
+        // 6. GLOBAL KEYBOARD SHORTCUTS
+        // ==========================================
+        document.addEventListener('keydown', function(event) {
+            // Listen specifically for the Spacebar
+            if (event.code === 'Space') {
+                // Prevent the default browser behavior (which scrolls the page down)
+                event.preventDefault(); 
+                
+                // Trigger your existing DVR toggle function
+                togglePlayPause();
+            }
+        });
+
+        // ==========================================
+        // 7. MAIN INGESTION ENGINE
+        // ==========================================
+        function startStream() {
+            document.getElementById('streamBtn').innerText = "STREAMING...";
+            document.getElementById('streamBtn').classList.add("bg-green-700");
+            const source = new EventSource('http://localhost:5000/stream');
+            
+            source.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.error) return alert(data.error);
+
+                dataHistory.time.push(data.time);
+                dataHistory.sxr.push(data.solexs);
+                dataHistory.hxr.push(data.hel1os);
+                dataHistory.hr.push(data.hardness);
+
+                let sxr_deriv = 0;
+                if (dataHistory.sxr.length > 1) {
+                    sxr_deriv = data.solexs - dataHistory.sxr[dataHistory.sxr.length - 2];
+                }
+                dataHistory.phase.push({ x: data.hel1os, y: sxr_deriv });
+
+                dataHistory.threatInfo.push({
+                    prob: data.prob, f_class: data.class,
+                    xai_hr: data.xai_hr, xai_neupert: data.xai_neupert, xai_qpp: data.xai_qpp,
+                    cme_speed: data.cme_speed, // <-- ADD THIS
+                    cme_eta: data.cme_eta      // <-- ADD THIS
+                });
+
+                scrubber.max = dataHistory.time.length - 1;
+
+                if (isLive) {
+                    scrubber.value = scrubber.max;
+                    renderHistoricalFrame(dataHistory.time.length - 1);
+                } else if (isPlaying) {
+                    let nextVal = parseInt(scrubber.value) + 1;
+                    if (nextVal >= scrubber.max) { resumeLive(); } 
+                    else {
+                        scrubber.value = nextVal;
+                        renderHistoricalFrame(nextVal);
+                    }
+                }
+
+                if (data.prob > 0.85 && isLive) {
+                    triggerHardwareSafing();
+                }
+            };
+        }
+    </script>
+</body>
+</html>

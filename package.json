@@ -1,0 +1,15 @@
+{
+  "name": "solar-flare-detection",
+  "version": "1.0.0",
+  "description": "Aditya-L1 Dual-Payload Fusion Center",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^30.5.1"
+  }
+}
