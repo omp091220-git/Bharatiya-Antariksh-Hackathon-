@@ -1,0 +1,9 @@
+After downloading the repo, follow this steps:
+
+1) Open two terminal and reach to the file location in both of them.
+2) On one terminal, type 'npm install' (to download the essential JavaScript libraries or development tools locally to your machine (dictated by our package.json file))
+3) Once that is done; open the other window and run the python file (app.py)
+4) Once you get that, open our terminal of Step-2 and run the frontend by typing 'npm start'
+5) It will take some time to run depending on the size of the dataset.
+6) Once that's set, you are good to go!!
+7) Click on the 'Initiate Telemetry' button and enjoy the graphs
