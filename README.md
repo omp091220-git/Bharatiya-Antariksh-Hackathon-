@@ -51,5 +51,6 @@ Human reaction time is a fatal bottleneck during severe X-class flares. To achie
 If the multi-parameter threat probability exceeds the **85% dynamic threshold**, the backend completely bypasses human operators. It autonomously fires a webhook simulating an FPGA-level payload safing command (ARM interrupt). This initiates the physical closure of payload apertures and forces the spacecraft into a low-power safe mode *before* the extreme radiation arrives.
   
 
-
+This project still requires many changes and I am currently working on it! I'll do the changes here!
+Thanks!
 
